@@ -5,9 +5,9 @@
 
 #define PLUGIN_NAME "FinalKillcamEntityCamera"
 #define PLUGIN_DESC "Fixes broadcast entity killcam aim using snapshot origin spoof"
-#define PLUGIN_DESC_LONG "SetFinalKillcamTargetEntity(victimEntNum) during broadcast entity killcam so viewers aim at the victim."
+#define PLUGIN_DESC_LONG "SetFinalKillcamTargetEntity(victimEntNum) during broadcast entity killcam so viewers aim at the victim. Uses chained snapshot patch hooks."
 #define PLUGIN_VER_MAJ 5
-#define PLUGIN_VER_MIN 29
+#define PLUGIN_VER_MIN 30
 
 #define KILLCAM_ENTITY_NONE (MAX_GENTITIES - 1)
 #define FK_PROXY_RANK_HIDDEN (-1)
@@ -808,44 +808,89 @@ static qboolean FK_PatchPlayerState(client_t *client, playerState_t *ps, int arc
 static qboolean FK_PatchEntity(client_t *client, playerState_t *ps, entityState_t *entState, int archiveTime,
     snapshotPatchMode_t mode)
 {
-    if(mode == SNAPSHOT_PATCH_MODIFY)
+    if(!client || !entState)
     {
-        if(FK_KillcamTrackMatchesClient(client) && entState)
+        return qfalse;
+    }
+
+    switch(mode)
+    {
+    case SNAPSHOT_PATCH_MODIFY:
+        if(FK_KillcamTrackMatchesClient(client))
         {
             FK_NoteKillEntityInSnapshot(s_killcamEnt, archiveTime, entState);
         }
 
-        if(FK_PatchBaseEntity(client, entState))
+        if(!FK_SnapMatchesClient(client))
         {
-            return qtrue;
+            return qfalse;
         }
 
-        return FK_PatchProxyEntity(client, entState);
+        if(FK_PatchBaseEntity(client, entState))
+        {
+            return qfalse;
+        }
+
+        FK_PatchProxyEntity(client, entState);
+        return qfalse;
+
+    case SNAPSHOT_PATCH_APPEND:
+        if(!FK_SnapMatchesClient(client))
+        {
+            return qfalse;
+        }
+
+        return FK_PatchProxyOwnEntity(client, entState);
+
+    default:
+        break;
     }
 
     (void)ps;
-    (void)archiveTime;
-    return FK_PatchProxyOwnEntity(client, entState);
+    return qfalse;
 }
 
 static qboolean FK_PatchClientState(client_t *client, playerState_t *ps, clientState_t *cs,
     int csClientIndex, int archiveTime, snapshotPatchMode_t mode)
 {
-    (void)ps;
-    (void)archiveTime;
-
-    if(mode == SNAPSHOT_PATCH_MODIFY)
+    if(!client || !cs)
     {
-        if(FK_ProxyActive() && FK_SnapMatchesClient(client))
-        {
-            return FK_PatchProxyClientState(client, cs, csClientIndex);
-        }
-
-        return FK_PatchBaseClientState(client, cs, csClientIndex);
+        return qfalse;
     }
 
-    (void)csClientIndex;
-    return FK_PatchProxyOwnClientState(client, cs);
+    switch(mode)
+    {
+    case SNAPSHOT_PATCH_MODIFY:
+        if(!FK_SnapMatchesClient(client))
+        {
+            return qfalse;
+        }
+
+        if(FK_ProxyActive())
+        {
+            FK_PatchProxyClientState(client, cs, csClientIndex);
+        }
+        else
+        {
+            FK_PatchBaseClientState(client, cs, csClientIndex);
+        }
+        return qfalse;
+
+    case SNAPSHOT_PATCH_APPEND:
+        if(!FK_SnapMatchesClient(client))
+        {
+            return qfalse;
+        }
+
+        return FK_PatchProxyOwnClientState(client, cs);
+
+    default:
+        break;
+    }
+
+    (void)ps;
+    (void)archiveTime;
+    return qfalse;
 }
 
 /* ==========================================================================
@@ -861,6 +906,7 @@ PCL int OnInit(void)
 
     Plugin_Printf("^2[%s]^7 loaded. Body proxy uses client slot ^3(maxclients - 1)^7.\n", PLUGIN_NAME);
     Plugin_Printf("^2[%s]^7 GSC: ^3SetFinalKillcamTargetEntity( victim getEntityNumber() )^7\n", PLUGIN_NAME);
+    Plugin_Printf("^2[%s]^7 Snapshot hooks chain with other plugins; load FK after other snapshot patchers if possible.\n", PLUGIN_NAME);
     FK_Log(1, "init complete");
     return 0;
 }
