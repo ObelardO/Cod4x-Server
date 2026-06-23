@@ -4,6 +4,29 @@ Plugin version is `PLUGIN_VER_MAJ.PLUGIN_VER_MIN` in `final_killcam_entity_camer
 
 Requires CoD4x server with **snapshot patch API** (`plugin_snapshot_patching.c` on branch `snapshot-patch-api` or newer).
 
+## Usage notes
+
+### Entity killcam (heli, grenade, claymore, etc.)
+
+```gsc
+SetFinalKillcamTargetEntity( victim getEntityNumber() );
+// set killcamentity for broadcast viewers as usual
+```
+
+Clear when killcam ends: `SetFinalKillcamTargetEntity( -1 );`
+
+### Suicide final killcam
+
+This plugin is **entity killcam only**. It activates when viewers have an active `killCamEntity` and `SetFinalKillcamTargetEntity` is set.
+
+For **suicide** broadcast killcams, handle everything in **GSC** — do not use this plugin on that path:
+
+- Do **not** call `SetFinalKillcamTargetEntity( victim )` (or call `SetFinalKillcamTargetEntity( -1 )` to clear).
+- Do **not** set `killcamentity` for broadcast viewers (`killcamentity( -1 )` or omit it).
+- Use stock archived / victim replay killcam instead.
+
+With no `killCamEntity`, the plugin is a no-op for suicide killcams.
+
 ---
 
 ## 5.30
